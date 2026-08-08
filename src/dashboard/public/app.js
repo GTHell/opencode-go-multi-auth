@@ -311,6 +311,28 @@ const computedFresh = () => {
   return (Date.now() / 1000 - c.ts) < 30 * 60 ? c : null;
 };
 
+// recommended-routing hint: what can we safely do with this key right now?
+// data priority: computed (Langfuse+calib) -> official (console) -> est
+const routingHint = (key) => {
+  const wid = key.workspaceId;
+  if (!wid) return null;
+  const comp = computedFresh() && computedFresh().keys[wid];
+  const off = officialAny() && officialAny().workspaces[wid];
+  const der = state.derivedUsage && state.derivedUsage.keys[wid];
+  const p5 = comp && comp.rolling && typeof comp.rolling.pct === 'number' ? comp.rolling.pct
+    : off && off.rolling && typeof off.rolling.pct === 'number' ? off.rolling.pct : null;
+  const pw = comp && comp.weekly && typeof comp.weekly.pct === 'number' ? comp.weekly.pct
+    : off && off.weekly && typeof off.weekly.pct === 'number' ? off.weekly.pct : null;
+  const pace = der && der.pace;
+  const inCooldown = key.status === 'cooldown' || (key.cooldownUntil && key.cooldownUntil > Date.now());
+  if (inCooldown) return { label: 'cooling down', cls: 'chip-yellow', title: 'Upstream cooldown — router skips this key until retry time.' };
+  if (pw != null && pw >= 95) return { label: 'capped', cls: 'chip-red', title: `Weekly usage at ${pw}% — upstream caps this key.` };
+  if (pw != null && pw >= 70) return { label: `at ${Math.round(pw)}% — cool down`, cls: 'chip-yellow', title: `Weekly ${pw}% — load another key until reset.` };
+  if (p5 != null && p5 >= 70) return { label: `5h at ${Math.round(p5)}% — cool down`, cls: 'chip-yellow', title: `Rolling 5h ${p5}% — bursts cap fastest.` };
+  if (pace && pace !== 'ok') return { label: 'hot pace', cls: 'chip-yellow', title: `Pace projection ${pace} — projected to exceed a window.` };
+  return { label: 'safe to load', cls: 'chip-green', title: 'Within limits — safe to route traffic here.' };
+};
+
 const fmtHours = (h) => {
   if (h == null) return '';
   if (h >= 24 * 30) return `${(h / 720).toFixed(0)}mo`;
@@ -435,9 +457,13 @@ function renderPlanPool() {
     const paceChip = der && der.pace && der.pace !== 'ok'
       ? `<span class="chip ${der.pace === 'high' ? 'chip-yellow' : 'chip-red'}" title="Projected to exceed this window's limit at current burn rate">${der.pace.replace('caps-', 'caps ')}</span>`
       : '';
+    const rh = routingHint(k);
+    const routingChip = rh
+      ? `<span class="chip ${rh.cls}" title="${rh.title}">${rh.label}</span>`
+      : '';
     return `
     <div class="plan-key-row">
-      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong> ${badge}${paceChip}<div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
+      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong> ${badge}${paceChip}${routingChip}<div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
       ${cell(k.rolling5h, off && off.rolling, comp && comp.rolling, der && der.rolling)}${cell(k.weekly, off && off.weekly, comp && comp.weekly, der && der.weekly)}${cell(k.monthly, off && off.monthly, comp && comp.monthly, der && der.monthly)}
       <div class="plan-key-ws">${wsLink(k)}</div>
     </div>`;
@@ -1014,6 +1040,10 @@ function renderAccountCard(key) {
   const statusChip = key.enabled
     ? (key.status === 'cooldown' ? '<span class="chip chip-yellow">cooldown</span>' : '<span class="chip chip-green">active</span>')
     : '<span class="chip chip-muted">drained</span>';
+  const hint = routingHint(key);
+  const routingChip = hint
+    ? `<span class="chip ${hint.cls}" title="${hint.title}">${hint.label}</span>`
+    : '';
 
   const quotaErrorCount = key.quotaErrorCount || 0;
   const lastQuotaError = key.lastQuotaError;
@@ -1044,6 +1074,7 @@ function renderAccountCard(key) {
         <h3 class="account-alias" contenteditable="true" spellcheck="false" data-alias-id="${key.id}">${escapeHtml(key.alias)}</h3>
         <div class="account-masked">
           <code>${escapeHtml(key.masked)}</code>
+          ${routingChip}
           <button class="btn btn-ghost btn-sm" data-action="reveal" data-id="${key.id}">Replace key</button>
           ${key.workspaceId
             ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(key.workspaceId)}/go">Go workspace ↗</a>`
