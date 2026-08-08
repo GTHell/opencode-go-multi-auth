@@ -293,9 +293,23 @@ async function refreshPlanUsage() {
   } catch {
     /* no derived data yet */
   }
+  try {
+    // computed usage: Langfuse telemetry + calibration (computed_usage.py) —
+    // stays fresh between official console syncs, no browser needed.
+    const comp = await fetch('/usage-computed.json?t=' + Date.now()).then((r) => r.json());
+    if (comp && comp.keys) state.computedUsage = comp;
+  } catch {
+    /* no computed data yet */
+  }
   renderPlanPool();
   renderAccounts();
 }
+
+const computedFresh = () => {
+  const c = state.computedUsage;
+  if (!c || !c.ts) return null;
+  return (Date.now() / 1000 - c.ts) < 30 * 60 ? c : null;
+};
 
 const fmtHours = (h) => {
   if (h == null) return '';
@@ -347,7 +361,8 @@ function renderPlanPool() {
   if (!pu) return;
   const keys = pu.perKey || [];
   const official = officialFresh();
-  const cell = (w, offWin, derWin) => {
+  const computed = computedFresh();
+  const cell = (w, offWin, compWin, derWin) => {
     const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
     const pct = Math.min(100, raw);
     const color = raw >= 90 ? 'var(--red)' : raw >= 70 ? 'var(--yellow)' : 'var(--green)';
@@ -367,6 +382,22 @@ function renderPlanPool() {
         ${paceLine}
       </div>`;
     }
+    if (compWin && typeof compWin.pct === 'number') {
+      const cPct = Math.min(100, compWin.pct);
+      const cColor = compWin.pct >= 90 ? 'var(--red)' : compWin.pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+      const cReset = compWin.reset_at ? fmtReset(compWin.reset_at * 1000) : '';
+      const etaLine = compWin.eta_h != null ? `<span class="plan-cell-pace">ETA ${fmtHours(compWin.eta_h)} at current burn</span>` : '';
+      const extLine = compWin.external_pct != null && compWin.external_pct > 0
+        ? `<span class="plan-cell-est">external ${compWin.external_pct}% (non-router)</span>`
+        : '';
+      return `<div class="plan-cell">
+        <span class="official-pct" style="color:${cColor}">${compWin.pct}%</span>
+        <span class="plan-cell-reset">${cReset}</span>
+        <div class="plan-cell-track"><div class="plan-cell-fill" style="width:${cPct}%;background:${cColor}"></div></div>
+        <span class="plan-cell-est">calib x${compWin.calibrated ?? 1} · est $${(w?.cost || 0).toFixed(2)}/${w?.limit}</span>
+        ${etaLine}${extLine}
+      </div>`;
+    }
     return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div><span class="plan-cell-est">estimate</span>${paceLine}</div>`;
   };
   const wsLink = (k) => {
@@ -380,16 +411,20 @@ function renderPlanPool() {
   };
   const rows = keys.map((k) => {
     const off = official && k.workspaceId ? official.workspaces[k.workspaceId] : null;
+    const comp = computed && k.workspaceId ? computed.keys[k.workspaceId] : null;
     const der = state.derivedUsage && k.workspaceId ? state.derivedUsage.keys[k.workspaceId] : null;
-    const badge = off ? '<span class="chip chip-green" title="Real numbers from the opencode.ai console">official</span>'
-                      : '<span class="chip chip-yellow" title="Rate-card estimate — not the console numbers">est</span>';
+    const badge = off
+      ? '<span class="chip chip-green" title="Real numbers from the opencode.ai console">official</span>'
+      : comp && comp.weekly && typeof comp.weekly.pct === 'number'
+        ? '<span class="chip chip-blue" title="Computed from Langfuse telemetry + calibration — live between console syncs">computed</span>'
+        : '<span class="chip chip-yellow" title="Rate-card estimate — not the console numbers">est</span>';
     const paceChip = der && der.pace && der.pace !== 'ok'
       ? `<span class="chip ${der.pace === 'high' ? 'chip-yellow' : 'chip-red'}" title="Projected to exceed this window's limit at current burn rate">${der.pace.replace('caps-', 'caps ')}</span>`
       : '';
     return `
     <div class="plan-key-row">
       <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong> ${badge}${paceChip}<div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
-      ${cell(k.rolling5h, off && off.rolling, der && der.rolling)}${cell(k.weekly, off && off.weekly, der && der.weekly)}${cell(k.monthly, off && off.monthly, der && der.monthly)}
+      ${cell(k.rolling5h, off && off.rolling, comp && comp.rolling, der && der.rolling)}${cell(k.weekly, off && off.weekly, comp && comp.weekly, der && der.weekly)}${cell(k.monthly, off && off.monthly, comp && comp.monthly, der && der.monthly)}
       <div class="plan-key-ws">${wsLink(k)}</div>
     </div>`;
   }).join('');
