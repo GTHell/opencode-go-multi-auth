@@ -52,6 +52,8 @@ function loadEnvConfig(): Partial<RouterConfig> {
     upstreamHungTimeoutMs: readPositiveInt(process.env.UPSTREAM_HUNG_TIMEOUT_MS, DEFAULT_CONFIG.upstreamHungTimeoutMs),
     keepAliveTimeoutMs: readPositiveInt(process.env.KEEP_ALIVE_TIMEOUT_MS, DEFAULT_CONFIG.keepAliveTimeoutMs),
     headersTimeoutMs: readPositiveInt(process.env.HEADERS_TIMEOUT_MS, DEFAULT_CONFIG.headersTimeoutMs),
+    usageAware: process.env.USAGE_AWARE === 'true',
+    usageAwareThreshold: Number(process.env.USAGE_AWARE_THRESHOLD) || DEFAULT_CONFIG.usageAwareThreshold,
   }
 }
 
@@ -117,6 +119,8 @@ export async function createRouter(
       fallbackCooldownMs: mergedConfig.cooldownMs,
       keepAliveTimeoutMs: mergedConfig.keepAliveTimeoutMs,
       headersTimeoutMs: mergedConfig.headersTimeoutMs,
+      usageAware: mergedConfig.usageAware,
+      usageAwareThreshold: mergedConfig.usageAwareThreshold,
     },
     keyManager,
     circuitBreaker,

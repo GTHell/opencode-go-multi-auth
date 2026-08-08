@@ -82,6 +82,8 @@ export interface RouterConfig {
   logLevel: string
   configDir: string
   strategy: RoutingStrategy
+  usageAware: boolean
+  usageAwareThreshold: number
   ntfyUrl: string
   visibleModels: string
   requestTimeoutMs: number
@@ -152,6 +154,8 @@ export const DEFAULT_CONFIG: RouterConfig = {
   logLevel: 'info',
   configDir: '',
   strategy: RoutingStrategy.PRIORITY_FAILOVER,
+  usageAware: false,
+  usageAwareThreshold: 70,
   ntfyUrl: '',
   visibleModels: '',
   requestTimeoutMs: 0,

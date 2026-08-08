@@ -11,6 +11,11 @@ import type {
 import { RoutingStrategy } from './types.js'
 import type { StoredKeyRuntimeState } from '../storage/runtime-state-store.js'
 
+export interface UsageAwareInput {
+  pct: (key: ApiKey) => number
+  threshold: number
+}
+
 export class KeyManager {
   private keys: ApiKey[] = []
   private roundRobinIndex = 0
@@ -152,12 +157,25 @@ export class KeyManager {
     return key
   }
 
-  getNextKey(strategy: RoutingStrategy, context: KeySelectionContext = {}): KeySelection | null {
+  getNextKey(strategy: RoutingStrategy, context: KeySelectionContext = {}, usage?: UsageAwareInput): KeySelection | null {
     const active = this.getCandidateKeys(context)
     if (active.length === 0) return null
 
     switch (strategy) {
       case RoutingStrategy.PRIORITY_FAILOVER: {
+        if (usage) {
+          const hot = active.filter((k) => usage.pct(k) >= usage.threshold)
+          const cool = active.filter((k) => usage.pct(k) < usage.threshold)
+          const pool = cool.length > 0 ? cool : hot
+          const key = this.sortByPriority(pool)[0]
+          if (cool.length === 0) {
+            return { key, reason: `Usage-aware: all keys ≥${usage.threshold}% — fell back to priority ${key.alias} (${Math.round(usage.pct(key))}%).` }
+          }
+          if (hot.length > 0) {
+            return { key, reason: `Usage-aware: skipped ${hot.length} key(s) ≥${usage.threshold}%; selected ${key.alias} (${Math.round(usage.pct(key))}%).` }
+          }
+          return { key, reason: `Priority failover selected highest priority key (${key.alias}).` }
+        }
         const key = this.sortByPriority(active)[0]
         return { key, reason: `Priority failover selected highest priority key (${key.alias}).` }
       }

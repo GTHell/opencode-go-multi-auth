@@ -240,7 +240,11 @@ export class DashboardServer {
     })
 
     this.app.get('/api/strategies', (_req, res) => {
-      res.json({ strategies: ROUTING_STRATEGIES })
+      res.json({
+        strategies: ROUTING_STRATEGIES,
+        usageAware: process.env.USAGE_AWARE === 'true',
+        usageAwareThreshold: Number(process.env.USAGE_AWARE_THRESHOLD) || 70,
+      })
     })
 
     this.app.put('/api/strategy', (req, res) => {

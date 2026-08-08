@@ -271,6 +271,8 @@ async function refreshStrategies() {
     api.currentStrategy(),
   ]);
   state.strategies = strategiesRes.strategies || [];
+  state.usageAware = Boolean(strategiesRes.usageAware);
+  state.usageAwareThreshold = strategiesRes.usageAwareThreshold || 70;
   state.activeStrategy = currentRes.strategy;
   renderRouting();
   $('#footer-strategy').textContent = state.activeStrategy.replace(/_/g, ' ');
@@ -1356,11 +1358,14 @@ function renderRouting() {
   const gridHost = $('#strategy-grid-host');
   if (!heroHost || !gridHost) return;
   const current = state.strategies.find((s) => s.value === state.activeStrategy);
+  const usageAwareChip = state.usageAware
+    ? `<span class="chip chip-blue" title="Keys at or above ${state.usageAwareThreshold}% of a plan window are skipped while cooler keys exist">usage-aware ≥${state.usageAwareThreshold}%</span>`
+    : '';
   if (current) {
     heroHost.innerHTML = `
       <div class="strategy-hero">
         <div>
-          <h3>${escapeHtml(current.label)}</h3>
+          <h3>${escapeHtml(current.label)} ${usageAwareChip}</h3>
           <p>${escapeHtml(current.description)}</p>
           <div class="strategy-facts">
             <div>

@@ -30,6 +30,8 @@ export interface ProxyServerConfig {
   fallbackCooldownMs: number
   keepAliveTimeoutMs: number
   headersTimeoutMs: number
+  usageAware: boolean
+  usageAwareThreshold: number
 }
 
 interface RequestPreparation {
@@ -433,7 +435,9 @@ export class ProxyServer {
 
     const selection = this.keyManager.getNextKey(strategy, {
       excludeKeyIds: attemptedKeyIds,
-    })
+    }, this.config.usageAware && strategy === RoutingStrategy.PRIORITY_FAILOVER
+      ? { pct: (key) => this.keyHotnessPct(key.id), threshold: this.config.usageAwareThreshold }
+      : undefined)
     if (!selection) return null
 
     return {
@@ -442,6 +446,28 @@ export class ProxyServer {
       strategy,
       selectedBySession: false,
     }
+  }
+
+  /**
+   * How hot is this key right now? Max percentage across the plan windows
+   * (5h/$12, 7d/$30, 30d/$60) using the router's own metered cost — the
+   * same shape as the dashboard's usage cells. Drives usage-aware routing.
+   */
+  private keyHotnessPct(keyId: string): number {
+    const now = Date.now()
+    const windows: Array<[number, number]> = [
+      [5 * 3600 * 1000, 12],
+      [7 * 24 * 3600 * 1000, 30],
+      [30 * 24 * 3600 * 1000, 60],
+    ]
+    let max = 0
+    for (const [ms, limit] of windows) {
+      const { cost } = this.quotaTracker.getWindowPlan(keyId, ms, now)
+      if (limit > 0 && typeof cost === 'number' && Number.isFinite(cost)) {
+        max = Math.max(max, (cost / limit) * 100)
+      }
+    }
+    return max
   }
 
   private extractQuotaMessage(bodyText: string, statusCode: number): string {
