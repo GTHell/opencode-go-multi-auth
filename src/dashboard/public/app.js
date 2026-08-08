@@ -301,9 +301,10 @@ function renderPlanPool() {
   const keys = pu.perKey || [];
   const cell = (w) => {
     const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
+    const pct = Math.min(100, raw);
     const color = raw >= 90 ? 'var(--red)' : raw >= 70 ? 'var(--yellow)' : 'var(--green)';
     const reset = w ? fmtReset(w.resetAt) : '—';
-    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-reset">${reset}</div></div>`;
+    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div></div>`;
   };
   const wsLink = (id) => id
     ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(id)}/go">Go ↗</a>`

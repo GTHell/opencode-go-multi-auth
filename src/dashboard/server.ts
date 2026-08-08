@@ -124,11 +124,12 @@ export class DashboardServer {
         return resets.length > 0 ? Math.min(...resets) : null
       }
       const pool: Record<string, { cost: number; limit: number; resetAt: number | null }> = {
-        rolling5h: { cost: sum('rolling5h'), limit: limits.rolling5h, resetAt: earliestReset('rolling5h') },
-        weekly: { cost: sum('weekly'), limit: limits.weekly, resetAt: earliestReset('weekly') },
-        monthly: { cost: sum('monthly'), limit: limits.monthly, resetAt: earliestReset('monthly') },
+        // Pool limit = N keys × per-key limit (each workspace has its own quota)
+        rolling5h: { cost: sum('rolling5h'), limit: limits.rolling5h * perKey.length, resetAt: earliestReset('rolling5h') },
+        weekly: { cost: sum('weekly'), limit: limits.weekly * perKey.length, resetAt: earliestReset('weekly') },
+        monthly: { cost: sum('monthly'), limit: limits.monthly * perKey.length, resetAt: earliestReset('monthly') },
       }
-      res.json({ limits, perKey, pool, ts: Date.now() })
+      res.json({ limits, perKey, pool, keyCount: perKey.length, ts: Date.now() })
     })
 
     this.app.post('/api/keys', wrap(async (req, res) => {
