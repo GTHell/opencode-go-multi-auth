@@ -319,9 +319,17 @@ const fmtHours = (h) => {
 };
 
 const officialFresh = () => {
-  const o = state.officialUsage;
+  const o = state.usageOfficial;
   if (!o || !o.ts) return null;
   return (Date.now() / 1000 - o.ts) < 20 * 60 ? o : null;
+};
+
+// any official data regardless of age — fallback so a stale sync still
+// preserves the last-known console truth (init-state preservation)
+const officialAny = () => {
+  const o = state.usageOfficial;
+  if (!o || !o.ts) return null;
+  return o;
 };
 
 const fmtReset = (resetAt) => {
@@ -360,7 +368,8 @@ function renderPlanPool() {
   const pu = state.planUsage;
   if (!pu) return;
   const keys = pu.perKey || [];
-  const official = officialFresh();
+  const official = officialAny();
+  const officialAge = official && official.ts ? (Date.now() / 1000 - official.ts) : null;
   const computed = computedFresh();
   const cell = (w, offWin, compWin, derWin) => {
     const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
@@ -419,7 +428,7 @@ function renderPlanPool() {
     const badge = comp && comp.weekly && typeof comp.weekly.pct === 'number'
       ? '<span class="chip chip-blue" title="Computed from Langfuse telemetry + calibration — live between daily console syncs">computed</span>'
       : off
-        ? '<span class="chip chip-green" title="Real numbers from the opencode.ai console">official</span>'
+        ? `<span class="chip chip-green" title="Real numbers from the opencode.ai console${officialAge != null && officialAge > 20 * 60 ? ` — last sync ${Math.round(officialAge / 3600)}h ago` : ''}">official${officialAge != null && officialAge > 20 * 60 ? '·stale' : ''}</span>`
         : '<span class="chip chip-yellow" title="Rate-card estimate — not the console numbers">est</span>';
     const paceChip = der && der.pace && der.pace !== 'ok'
       ? `<span class="chip ${der.pace === 'high' ? 'chip-yellow' : 'chip-red'}" title="Projected to exceed this window's limit at current burn rate">${der.pace.replace('caps-', 'caps ')}</span>`
