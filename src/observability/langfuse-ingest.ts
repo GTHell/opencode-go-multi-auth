@@ -37,7 +37,7 @@ export interface LangfuseEmitArgs {
   keyAlias: string
   workspaceId?: string | null
   model: string
-  tokens: { input: number; output: number; total?: number; inputCacheRead?: number; inputCacheWrite?: number; reasoning?: number } | null
+  tokens: { input: number; output: number; total?: number; cacheRead?: number; cacheWrite?: number; reasoning?: number } | null
   cost: number | null
   durationMs: number
   statusCode: number
@@ -89,8 +89,8 @@ class LangfuseIngest {
             input: tokens.input ?? 0,
             output: tokens.output ?? 0,
             total: tokens.total ?? (tokens.input ?? 0) + (tokens.output ?? 0),
-            inputCacheRead: tokens.inputCacheRead,
-            inputCacheWrite: tokens.inputCacheWrite,
+            inputCacheRead: tokens.cacheRead,
+            inputCacheWrite: tokens.cacheWrite,
             reasoning: tokens.reasoning,
           }
         : { input: 0, output: 0, total: 0 },
@@ -101,6 +101,17 @@ class LangfuseIngest {
         statusCode: args.statusCode,
         cost: args.cost,
         upstream: args.isZen ? 'zen' : 'go',
+        // v3.225.1 generation schema drops inputCacheRead/Write/reasoning
+        // from usage — carry the full token split in metadata instead
+        tokens: tokens
+          ? {
+              input: tokens.input ?? 0,
+              output: tokens.output ?? 0,
+              cacheRead: tokens.cacheRead ?? 0,
+              cacheWrite: tokens.cacheWrite ?? 0,
+              reasoning: tokens.reasoning ?? 0,
+            }
+          : null,
       },
       startTime: start.toISOString(),
       endTime: end.toISOString(),

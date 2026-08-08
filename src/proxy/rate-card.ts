@@ -34,7 +34,7 @@ const RATE_CARD: Record<string, ModelRate> = {
                          highInput: 2.00, highOutput: 6.00, highCacheRead: 0.20, highCacheWrite: 2.50 },
   'qwen3.5-plus':      { input: 0.20, output: 1.20, cacheRead: 0.02, cacheWrite: 0.25 },
   'deepseek-v4-pro':   { input: 1.74, output: 3.48, cacheRead: 0.0145, cacheWrite: 0 },
-  'deepseek-v4-flash': { input: 0.14, output: 0.28, cacheRead: 0.0028, cacheWrite: 0 },
+  'deepseek-v4-flash': { input: 0.14, output: 0.28, cacheRead: 0.014, cacheWrite: 0 },
   'grok-build-0.1':    { input: 1.00, output: 2.00, cacheRead: 0.20, cacheWrite: 0 },
 }
 
