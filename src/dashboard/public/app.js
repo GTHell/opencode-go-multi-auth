@@ -296,15 +296,33 @@ function planBarsHtml(windows) {
 function renderPlanPool() {
   const host = $('#plan-pool');
   if (!host) return;
-  const pool = state.planUsage?.pool;
-  if (!pool) return;
-  const total5h = (state.planUsage.perKey || []).reduce((a, k) => a + (k.rolling5h?.cost || 0), 0);
+  const pu = state.planUsage;
+  if (!pu) return;
+  const keys = pu.perKey || [];
+  const cell = (w) => {
+    const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
+    const color = raw >= 90 ? 'var(--red)' : raw >= 70 ? 'var(--yellow)' : 'var(--green)';
+    const reset = w ? fmtReset(w.resetAt) : '—';
+    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-reset">${reset}</div></div>`;
+  };
+  const wsLink = (id) => id
+    ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(id)}/go">Go ↗</a>`
+    : '<span class="plan-cell-reset">—</span>';
+  const rows = keys.map((k) => `
+    <div class="plan-key-row">
+      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong><div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
+      ${cell(k.rolling5h)}${cell(k.weekly)}${cell(k.monthly)}
+      <div class="plan-key-ws">${wsLink(k.workspaceId)}</div>
+    </div>`).join('');
+  const total5h = pu.pool?.rolling5h?.cost || 0;
   host.innerHTML = `
     <div class="plan-pool-head">
       <span>Pool vs Go plan limits</span>
-      <span class="plan-pool-total">$${total5h.toFixed(2)} in last 5h</span>
+      <span class="plan-pool-total">$${total5h.toFixed(2)} in last 5h · ${keys.length} key${keys.length === 1 ? '' : 's'}</span>
     </div>
-    ${planBarsHtml(pool)}`;
+    ${planBarsHtml(pu.pool)}
+    <div class="plan-table-head"><span>Key</span><span>5h ($12)</span><span>Week ($30)</span><span>Month ($60)</span><span>Workspace</span></div>
+    <div class="plan-tbl">${rows}</div>`;
 }
 
 async function refreshSnapshot() {
@@ -899,6 +917,7 @@ function renderAccountCard(key) {
         <div class="account-masked">
           <code>${escapeHtml(key.masked)}</code>
           <button class="btn btn-ghost btn-sm" data-action="reveal" data-id="${key.id}">Replace key</button>
+          ${key.workspaceId ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(key.workspaceId)}/go">Go workspace ↗</a>` : ''}
         </div>
         <div class="account-actions" style="margin-top: 8px;">
           ${statusChip}

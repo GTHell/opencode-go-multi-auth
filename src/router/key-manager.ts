@@ -226,12 +226,15 @@ export class KeyManager {
     return key
   }
 
-  updateKeySettings(id: string, updates: Partial<Pick<ApiKey, 'alias' | 'enabled' | 'priority' | 'weight'>>): ApiKey | null {
+  updateKeySettings(id: string, updates: Partial<Pick<ApiKey, 'alias' | 'enabled' | 'priority' | 'weight' | 'workspaceId'>>): ApiKey | null {
     const key = this.getKeyById(id)
     if (!key) return null
 
     if (typeof updates.alias === 'string' && updates.alias.trim()) {
       key.alias = updates.alias.trim()
+    }
+    if (typeof updates.workspaceId === 'string') {
+      key.workspaceId = updates.workspaceId.trim() ? updates.workspaceId.trim() : undefined
     }
     if (typeof updates.enabled === 'boolean') {
       key.enabled = updates.enabled

@@ -110,6 +110,7 @@ export class DashboardServer {
         return {
           id: key.id,
           alias: key.alias,
+          workspaceId: key.workspaceId ?? null,
           masked: `****${key.key.slice(-4)}`,
           rolling5h: mk(this.quotaTracker.getWindowPlan(key.id, 5 * H), limits.rolling5h),
           weekly: mk(this.quotaTracker.getWindowPlan(key.id, 7 * 24 * H), limits.weekly),
@@ -203,12 +204,13 @@ export class DashboardServer {
     }))
 
     this.app.put('/api/keys/:id', wrap(async (req, res) => {
-      const { alias, enabled, priority, weight } = req.body ?? {}
+      const { alias, enabled, priority, weight, workspaceId } = req.body ?? {}
       const updated = this.keyManager.updateKeySettings(req.params.id, {
         alias,
         enabled,
         priority,
         weight,
+        workspaceId: typeof workspaceId === 'string' ? workspaceId : undefined,
       })
       if (!updated) {
         res.status(404).json({ error: 'Key not found' })
@@ -436,6 +438,7 @@ export class DashboardServer {
     return {
       id: key.id,
       alias: key.alias,
+      workspaceId: key.workspaceId ?? null,
       masked: `****${key.key.slice(-4)}`,
       status: key.status,
       enabled: key.enabled,
