@@ -72,9 +72,17 @@ export interface KeySelection {
   reason: string
 }
 
+export interface ProviderLaneConfig {
+  name: string
+  modelPrefix: string
+  url: string
+  apiKey: string
+}
+
 export interface RouterConfig {
   upstreamUrl: string
   upstreamUrlZen: string
+  providerLane: ProviderLaneConfig | null
   dashboardPort: number
   proxyPort: number
   cooldownMs: number
@@ -147,6 +155,7 @@ export function getRoutingStrategyInfo(strategy: RoutingStrategy): RoutingStrate
 export const DEFAULT_CONFIG: RouterConfig = {
   upstreamUrl: 'https://opencode.ai/zen/go/v1',
   upstreamUrlZen: 'https://opencode.ai/zen/v1',
+  providerLane: null,
   dashboardPort: 18904,
   proxyPort: 18905,
   cooldownMs: 5 * 60 * 60 * 1000,

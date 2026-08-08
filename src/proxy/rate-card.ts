@@ -36,6 +36,7 @@ const RATE_CARD: Record<string, ModelRate> = {
   'deepseek-v4-pro':   { input: 1.74, output: 3.48, cacheRead: 0.0145, cacheWrite: 0 },
   'deepseek-v4-flash': { input: 0.14, output: 0.28, cacheRead: 0.014, cacheWrite: 0 },
   'grok-build-0.1':    { input: 1.00, output: 2.00, cacheRead: 0.20, cacheWrite: 0 },
+  'command-code-24b':  { input: 0.10, output: 0.25, cacheRead: 0, cacheWrite: 0 },
 }
 
 const CONTEXT_TIER_THRESHOLD = 256_000

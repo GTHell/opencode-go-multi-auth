@@ -41,6 +41,14 @@ function loadEnvConfig(): Partial<RouterConfig> {
   return {
     upstreamUrl: process.env.UPSTREAM_URL || DEFAULT_CONFIG.upstreamUrl,
     upstreamUrlZen: process.env.UPSTREAM_URL_ZEN || DEFAULT_CONFIG.upstreamUrlZen,
+    providerLane: (process.env.PROVIDER_LANE_URL && process.env.PROVIDER_LANE_API_KEY)
+      ? {
+          name: process.env.PROVIDER_LANE_NAME || 'command',
+          modelPrefix: process.env.PROVIDER_LANE_MODEL_PREFIX || 'cc:',
+          url: process.env.PROVIDER_LANE_URL,
+          apiKey: process.env.PROVIDER_LANE_API_KEY,
+        }
+      : null,
     dashboardPort: Number(process.env.DASHBOARD_PORT) || DEFAULT_CONFIG.dashboardPort,
     proxyPort: Number(process.env.PROXY_PORT) || DEFAULT_CONFIG.proxyPort,
     cooldownMs: Number(process.env.COOLDOWN_MS) || DEFAULT_CONFIG.cooldownMs,
@@ -114,6 +122,7 @@ export async function createRouter(
       port: mergedConfig.proxyPort,
       upstreamUrl: mergedConfig.upstreamUrl,
       upstreamUrlZen: mergedConfig.upstreamUrlZen,
+      providerLane: mergedConfig.providerLane,
       requestTimeoutMs: mergedConfig.requestTimeoutMs,
       upstreamHungTimeoutMs: mergedConfig.upstreamHungTimeoutMs,
       fallbackCooldownMs: mergedConfig.cooldownMs,

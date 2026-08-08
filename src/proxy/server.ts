@@ -12,6 +12,7 @@ import {
   normalizeRoutingStrategy,
   type ApiKey,
   type KeySelection,
+  type ProviderLaneConfig,
   type QuotaErrorSignal,
 } from '../router/types.js'
 import { buildUpstreamHeaders, extractCacheHeaders } from './header-passthrough.js'
@@ -25,6 +26,7 @@ export interface ProxyServerConfig {
   port: number
   upstreamUrl: string
   upstreamUrlZen: string
+  providerLane: ProviderLaneConfig | null
   requestTimeoutMs: number
   upstreamHungTimeoutMs: number
   fallbackCooldownMs: number
@@ -114,6 +116,118 @@ export class ProxyServer {
     })
   }
 
+  private laneFor(model: string | null): ProviderLaneConfig | null {
+    const lane = this.config.providerLane
+    if (!lane || !model) return null
+    return model.startsWith(lane.modelPrefix) ? lane : null
+  }
+
+  /** Strip the lane prefix from the request body's model field before
+   *  forwarding (client sends `cc:claude-sonnet-5`, upstream gets
+   *  `claude-sonnet-5`). Byte-for-byte pass-through is preserved for
+   *  everything except the model key. */
+  private stripLanePrefix(body: string | Buffer | null | undefined, lane: ProviderLaneConfig, model: string | null): string | Buffer | null | undefined {
+    if (!model || !body) return body
+    try {
+      const parsed = JSON.parse(body.toString('utf8'))
+      if (typeof parsed.model === 'string' && parsed.model.startsWith(lane.modelPrefix)) {
+        parsed.model = parsed.model.slice(lane.modelPrefix.length)
+        return Buffer.from(JSON.stringify(parsed))
+      }
+    } catch {
+      /* not JSON (e.g. unknown route) — forward as-is */
+    }
+    return body
+  }
+
+  private async handleLaneRequest(
+    lane: ProviderLaneConfig,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    body: string | Buffer | null | undefined,
+    targetPath: string,
+    headers: Record<string, string | string[] | undefined>,
+    upstreamSessionId: string | undefined,
+    model: string | null,
+  ): Promise<void> {
+    const upstreamHeaders: Record<string, string> = {
+      authorization: `Bearer ${lane.apiKey}`,
+      'content-type': typeof headers['content-type'] === 'string' ? headers['content-type'] : 'application/json',
+      accept: typeof headers['accept'] === 'string' ? headers['accept'] : 'application/json',
+    }
+    if (upstreamSessionId) {
+      upstreamHeaders['x-session-id'] = upstreamSessionId
+    }
+    const startTime = Date.now()
+    try {
+      const fetchUrl = buildUpstreamUrl(lane.url, req.url)
+      const forwardBody = this.stripLanePrefix(body, lane, model)
+      const upstreamRes = await fetch(fetchUrl, {
+        method: req.method ?? 'POST',
+        headers: upstreamHeaders,
+        body: req.method !== 'GET' && req.method !== 'HEAD' && forwardBody ? Buffer.from(forwardBody) : undefined,
+        signal: AbortSignal.timeout(this.config.upstreamHungTimeoutMs || 120_000),
+      })
+      const duration = Date.now() - startTime
+      const responseTextPromise = upstreamRes.clone().text().catch(() => '')
+
+      const outHeaders: Record<string, string> = {}
+      const ct = upstreamRes.headers.get('content-type')
+      if (ct) outHeaders['content-type'] = ct
+      res.writeHead(upstreamRes.status, outHeaders)
+      if (upstreamRes.body) {
+        await this.pipeResponseBody(upstreamRes.body, res)
+      } else {
+        res.end()
+      }
+
+      const responseBody = await responseTextPromise
+      const usageData = parseUsageData(responseBody, model ?? undefined)
+      const tokens = usageData?.tokens ?? null
+      let cost: number | null = tokens ? (usageData?.cost ?? null) : null
+      if (tokens && cost == null) {
+        const estimated = estimateCost(model, tokens)
+        if (estimated != null) cost = estimated
+      }
+
+      langfuseIngest.enqueue({
+        keyId: `lane:${lane.name}`,
+        keyAlias: lane.name,
+        workspaceId: null,
+        model: model ?? 'unknown',
+        tokens,
+        cost,
+        durationMs: duration,
+        statusCode: upstreamRes.status,
+        sessionId: upstreamSessionId ?? null,
+        startTime,
+        isZen: false,
+      })
+
+      this.logStream.emit(this.logger, upstreamRes.status >= 400 ? 'warn' : 'info',
+        `${req.method} ${targetPath} -> ${upstreamRes.status} (lane ${lane.name})`, {
+          method: req.method,
+          path: targetPath,
+          statusCode: upstreamRes.status,
+          keyAlias: lane.name,
+          keyId: `lane:${lane.name}`,
+          duration,
+          model,
+          upstream: `lane:${lane.name}`,
+        })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logStream.emit(this.logger, 'error',
+        `Lane ${lane.name} request failed: ${msg}`, { path: targetPath, model })
+      if (!res.headersSent) {
+        res.writeHead(502, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: `Lane ${lane.name} upstream error: ${msg}` }))
+      } else {
+        res.destroy()
+      }
+    }
+  }
+
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const targetPath = req.url?.split('?')[0] || '/'
     const isZenRequest = targetPath === '/zen' || targetPath.startsWith('/zen/')
@@ -145,6 +259,14 @@ export class ProxyServer {
     const totalKeys = this.keyManager.getActiveKeys().length
     const maxAttempts = totalKeys || 1
     let lastError = 'All API keys exhausted'
+
+    // Provider lane: model-prefix routing to a non-Go upstream (e.g. Command Code).
+    // Single lane key, no quota windows, no cross-provider failover.
+    const lane = this.laneFor(prepared.model)
+    if (lane) {
+      await this.handleLaneRequest(lane, req, res, prepared.body ?? null, targetPath, headers, upstreamSessionId, prepared.model)
+      return
+    }
 
     const upstreamAbortController = new AbortController()
     let upstreamClientCloseHandler: (() => void) | null = null
