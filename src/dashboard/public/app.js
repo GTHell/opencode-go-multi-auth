@@ -319,7 +319,7 @@ const fmtHours = (h) => {
 };
 
 const officialFresh = () => {
-  const o = state.usageOfficial;
+  const o = state.officialUsage;
   if (!o || !o.ts) return null;
   return (Date.now() / 1000 - o.ts) < 20 * 60 ? o : null;
 };
@@ -327,7 +327,7 @@ const officialFresh = () => {
 // any official data regardless of age — fallback so a stale sync still
 // preserves the last-known console truth (init-state preservation)
 const officialAny = () => {
-  const o = state.usageOfficial;
+  const o = state.officialUsage;
   if (!o || !o.ts) return null;
   return o;
 };
@@ -382,7 +382,9 @@ function renderPlanPool() {
     if (compWin && typeof compWin.pct === 'number') {
       const cPct = Math.min(100, compWin.pct);
       const cColor = compWin.pct >= 90 ? 'var(--red)' : compWin.pct >= 70 ? 'var(--yellow)' : 'var(--green)';
-      const cReset = compWin.reset_at ? fmtReset(compWin.reset_at * 1000) : '';
+      const cReset = (compWin.reset_at && Math.abs(compWin.reset_at * 1000 - Date.now()) < 3600 * 1000)
+        ? 'rolling 30d window'
+        : (compWin.reset_at ? fmtReset(compWin.reset_at * 1000) : '');
       const etaLine = compWin.eta_h != null ? `<span class="plan-cell-pace">ETA ${fmtHours(compWin.eta_h)} at current burn</span>` : '';
       const extLine = compWin.external_pct != null && compWin.external_pct > 0
         ? `<span class="plan-cell-est">external ${compWin.external_pct}% (non-router)</span>`
