@@ -189,6 +189,25 @@ if (navToggle) {
   navToggle.addEventListener('click', () => document.body.classList.toggle('nav-open'));
 }
 
+// Edit a key's workspace ID straight from the UI (table + account card).
+async function editWorkspaceId(id, current) {
+  const input = window.prompt('OpenCode Go workspace ID (wrk_…):', current || '');
+  if (input === null) return;
+  const ws = input.trim();
+  try {
+    await api.updateKey(id, { workspaceId: ws });
+    await Promise.all([refreshKeys(), refreshPlanUsage()]);
+    toast(ws ? 'Workspace link updated' : 'Workspace link removed', 'info');
+  } catch (err) {
+    toast((err && err.message) || 'Failed to update workspace', 'error');
+  }
+}
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action="edit-ws"]');
+  if (!btn) return;
+  editWorkspaceId(btn.dataset.id, btn.dataset.current || '');
+});
+
 function initRouting() {
   $$('.nav-item').forEach((el) => {
     el.addEventListener('click', () => setPage(el.dataset.page));
@@ -306,14 +325,20 @@ function renderPlanPool() {
     const reset = w ? fmtReset(w.resetAt) : '—';
     return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div></div>`;
   };
-  const wsLink = (id) => id
-    ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(id)}/go">Go ↗</a>`
-    : '<span class="plan-cell-reset">—</span>';
+  const wsLink = (k) => {
+    const id = k.workspaceId;
+    return `<div class="plan-ws-cell">
+      ${id
+        ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(id)}/go">Go ↗</a>`
+        : '<span class="plan-cell-reset">unset</span>'}
+      <button class="btn btn-ghost btn-sm ws-edit" data-action="edit-ws" data-id="${k.id}" data-current="${id || ''}" title="Set workspace ID">✎</button>
+    </div>`;
+  };
   const rows = keys.map((k) => `
     <div class="plan-key-row">
       <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong><div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
       ${cell(k.rolling5h)}${cell(k.weekly)}${cell(k.monthly)}
-      <div class="plan-key-ws">${wsLink(k.workspaceId)}</div>
+      <div class="plan-key-ws">${wsLink(k)}</div>
     </div>`).join('');
   const total5h = pu.pool?.rolling5h?.cost || 0;
   host.innerHTML = `
@@ -918,7 +943,10 @@ function renderAccountCard(key) {
         <div class="account-masked">
           <code>${escapeHtml(key.masked)}</code>
           <button class="btn btn-ghost btn-sm" data-action="reveal" data-id="${key.id}">Replace key</button>
-          ${key.workspaceId ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(key.workspaceId)}/go">Go workspace ↗</a>` : ''}
+          ${key.workspaceId
+            ? `<a class="plan-ws" target="_blank" rel="noopener" href="https://opencode.ai/workspace/${encodeURIComponent(key.workspaceId)}/go">Go workspace ↗</a>`
+            : '<span class="plan-cell-reset">no workspace</span>'}
+          <button class="btn btn-ghost btn-sm ws-edit" data-action="edit-ws" data-id="${key.id}" data-current="${key.workspaceId || ''}" title="Set workspace ID">✎</button>
         </div>
         <div class="account-actions" style="margin-top: 8px;">
           ${statusChip}
