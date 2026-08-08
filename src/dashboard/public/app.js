@@ -338,7 +338,7 @@ const routingHint = (key) => {
     : off && off.weekly && typeof off.weekly.pct === 'number' ? off.weekly.pct : null;
   const pace = der && der.pace;
   const inCooldown = key.status === 'cooldown' || (key.cooldownUntil && key.cooldownUntil > Date.now());
-  if (inCooldown) return { label: 'cooling down', cls: 'chip-yellow', title: 'Upstream cooldown — router skips this key until retry time.' };
+  if (inCooldown) return null;  // status chips + cooldown timer already say it
   if (pw != null && pw >= 95) return { label: 'capped', cls: 'chip-red', title: `Weekly usage at ${pw}% — upstream caps this key.` };
   if (pw != null && pw >= 70) return { label: `at ${Math.round(pw)}% — cool down`, cls: 'chip-yellow', title: `Weekly ${pw}% — load another key until reset.` };
   if (p5 != null && p5 >= 70) return { label: `5h at ${Math.round(p5)}% — cool down`, cls: 'chip-yellow', title: `Rolling 5h ${p5}% — bursts cap fastest.` };
@@ -488,8 +488,7 @@ function renderPlanPool() {
       <span class="plan-pool-total">$${total5h.toFixed(2)} in last 5h · ${keys.length} key${keys.length === 1 ? '' : 's'}</span>
     </div>
     ${planBarsHtml(pu.pool)}
-    <div class="plan-table-head"><span>Key</span><span>5h ($12)</span><span>Week ($30)</span><span>Month ($60)</span><span>Workspace</span></div>
-    <div class="plan-tbl">${rows}</div>`;
+    <div class="plan-tbl"><div class="plan-table-head"><span>Key</span><span>5h ($12)</span><span>Week ($30)</span><span>Month ($60)</span><span>Workspace</span></div>${rows}</div>`;
 }
 
 async function refreshSnapshot() {
