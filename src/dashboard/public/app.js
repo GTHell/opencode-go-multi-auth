@@ -180,6 +180,13 @@ function setPage(page) {
   if (page === 'tokens') renderTokens();
   if (page === 'models') renderModels();
   if (page === 'settings') renderSettings();
+  if (window.innerWidth <= 700) document.body.classList.remove('nav-open');
+}
+
+// Mobile: hamburger opens the sidebar off-canvas.
+const navToggle = document.getElementById('nav-toggle');
+if (navToggle) {
+  navToggle.addEventListener('click', () => document.body.classList.toggle('nav-open'));
 }
 
 function initRouting() {
@@ -273,13 +280,14 @@ function planBarsHtml(windows) {
     ['month', windows.monthly],
   ];
   return rows.map(([label, w]) => {
-    const pct = w && w.limit > 0 ? Math.min(100, (w.cost / w.limit) * 100) : 0;
-    const color = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+    const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
+    const pct = Math.min(100, raw);
+    const color = raw >= 90 ? 'var(--red)' : raw >= 70 ? 'var(--yellow)' : 'var(--green)';
     const costText = w ? `$${w.cost.toFixed(2)} / $${w.limit}` : '—';
     const resetText = w ? fmtReset(w.resetAt) : '—';
     return `
       <div class="plan-row">
-        <div class="plan-label"><span>${label}</span><span>${costText} · ${pct.toFixed(0)}% · ${resetText}</span></div>
+        <div class="plan-label"><span>${label}</span><span>${costText} · ${raw.toFixed(0)}% · ${resetText}</span></div>
         <div class="plan-track"><div class="plan-fill" style="width:${pct}%;background:${color}"></div></div>
       </div>`;
   }).join('');
@@ -866,8 +874,10 @@ function renderAccountCard(key) {
   const quotaErrorChip = quotaErrorCount > 0
     ? `<span class="chip chip-red" title="Upstream told us this key was exhausted ${quotaErrorCount} time${quotaErrorCount === 1 ? '' : 's'}. The router will not route to this key until the upstream-supplied retry time.">quota ${quotaErrorCount}</span>`
     : '';
+  const qmsg = (lastQuotaError.message || '').replace(/https?:\/\/\S+/gi, '[link]');
+  const qmsgShort = qmsg.length > 130 ? `${qmsg.slice(0, 130)}…` : qmsg;
   const lastQuotaLine = lastQuotaError
-    ? `<div class="account-quota-line">Last quota error: <strong>HTTP ${lastQuotaError.statusCode}</strong> ${escapeHtml(lastQuotaError.message || '')}${lastQuotaError.resetAt ? ` · retry ${fmtDateTime(new Date(lastQuotaError.resetAt).toISOString())}` : ''}</div>`
+    ? `<div class="account-quota-line">Last quota error: <strong>HTTP ${lastQuotaError.statusCode}</strong> ${escapeHtml(qmsgShort)}${lastQuotaError.resetAt ? ` · retry ${fmtDateTime(new Date(lastQuotaError.resetAt).toISOString())}` : ''}</div>`
     : '';
 
   const circuitChip = key.health === 'open'
