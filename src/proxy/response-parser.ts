@@ -33,11 +33,28 @@ function mergeUsage(current: ParsedUsageData | null, incoming: ParsedUsageData |
 function extractUsageObject(source: Record<string, any> | undefined): ParsedUsageData | null {
   if (!source) return null
 
+  const ptd = source.prompt_tokens_details
+  // dialect-aware: deepseek openai-compat reports prompt_cache_hit/miss_tokens
+  // (prompt_tokens INCLUDES hits); anthropic input_tokens EXCLUDES cache;
+  // openai prompt_tokens includes cached_tokens.
+  const isDeepseek = source.prompt_cache_hit_tokens !== undefined || source.prompt_cache_miss_tokens !== undefined
+  const cachedTokens = isDeepseek
+    ? (source.prompt_cache_hit_tokens ?? 0)
+    : (source.cache_read_input_tokens ?? ptd?.cached_tokens ?? 0)
+  const input = isDeepseek
+    ? (source.prompt_cache_miss_tokens ?? source.prompt_tokens ?? 0)
+    : (source.input_tokens ?? Math.max((source.prompt_tokens ?? 0) - (ptd?.cached_tokens ?? 0), 0))
+  const cacheRead = cachedTokens
+  const cacheWrite = isDeepseek ? 0 : (source.cache_creation_input_tokens ?? 0)
   const tokens: TokenBreakdown = {
-    input: source.input_tokens ?? source.prompt_tokens ?? 0,
+    input,
     output: source.output_tokens ?? source.completion_tokens ?? 0,
-    cacheRead: source.cache_read_input_tokens ?? source.prompt_tokens_details?.cached_tokens ?? 0,
-    cacheWrite: source.cache_creation_input_tokens ?? 0,
+    // cache fields across provider dialects:
+    //   anthropic: cache_read_input_tokens / cache_creation_input_tokens
+    //   deepseek (openai-compat): prompt_cache_hit_tokens / prompt_cache_miss_tokens
+    //   openai: prompt_tokens_details.cached_tokens
+    cacheRead,
+    cacheWrite,
     reasoning: source.reasoning_output_tokens ?? source.completion_tokens_details?.reasoning_tokens ?? 0,
   }
 
