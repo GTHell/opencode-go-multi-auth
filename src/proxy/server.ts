@@ -18,6 +18,7 @@ import { buildUpstreamHeaders, extractCacheHeaders } from './header-passthrough.
 import { isQuota429, resolveCooldownMs } from './quota-detector.js'
 import { parseUsageData } from './response-parser.js'
 import { estimateCost } from './rate-card.js'
+import { langfuseIngest } from '../observability/langfuse-ingest.js'
 import { SessionAffinityStore } from './session-affinity.js'
 
 export interface ProxyServerConfig {
@@ -342,6 +343,21 @@ export class ProxyServer {
         if (sessionKey) {
           this.sessionAffinity.setPreferredKey(sessionKey, key.id)
         }
+
+        // Async observability (Langfuse, mode 2) — never blocks routing.
+        langfuseIngest.enqueue({
+          keyId: key.id,
+          keyAlias: key.alias,
+          workspaceId: key.workspaceId,
+          model: prepared.model ?? 'unknown',
+          tokens,
+          cost,
+          durationMs: duration,
+          statusCode: upstreamRes.status,
+          sessionId: upstreamSessionId ?? sessionKey ?? null,
+          startTime,
+          isZen: isZenRequest,
+        })
 
         const level = upstreamRes.status >= 500 ? 'error' : upstreamRes.status >= 400 ? 'warn' : 'info'
         this.logStream.emit(this.logger, level, `${req.method} ${targetPath} -> ${upstreamRes.status}`, {
