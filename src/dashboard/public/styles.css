@@ -852,6 +852,7 @@ input, select, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .account-masked code { color: var(--text-secondary); }
 .account-actions-mini { display: flex; gap: 4px; }
@@ -1560,12 +1561,21 @@ input, select, textarea {
     z-index: 55;
   }
   .sidebar-footer { display: none; }
+  /* account cards: 4-col grid crushes the primary column at narrow widths
+     (Go plan usage wrapped word-by-word). Restack: handle + primary on
+     row 1, meta + stat bar full-width below. */
+  .account-card {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 8px 10px;
+  }
+  .account-meta, .account-stat-bar { grid-column: 2 / -1; }
+  .plan-usage-head { white-space: nowrap; }
 }
-.plan-usage { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.plan-usage { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); grid-column: 1 / -1; }
 .plan-usage-head { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); margin-bottom: 8px; }
 .plan-row { margin-bottom: 8px; }
-.plan-label { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; flex-wrap: wrap; }
-.plan-label span:first-child { color: var(--text); font-weight: 600; min-width: 34px; }
+.plan-label { display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; line-height: 1.5; }
+.plan-label span:first-child { color: var(--text); font-weight: 600; display: inline-block; min-width: 40px; margin-right: 8px; }
 .plan-track { height: 6px; border-radius: 4px; background: var(--bg-raised, rgba(255,255,255,.06)); overflow: hidden; }
 .plan-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
 #plan-pool .plan-pool-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 600; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
