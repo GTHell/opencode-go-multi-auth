@@ -103,6 +103,7 @@ const api = {
   },
   status() { return this.req('/api/status'); },
   keys() { return this.req('/api/keys'); },
+  planUsage() { return this.req('/api/plan-usage'); },
   strategies() { return this.req('/api/strategies'); },
   currentStrategy() { return this.req('/api/strategy'); },
   setStrategy(s) { return this.req('/api/strategy', { method: 'PUT', body: { strategy: s } }); },
@@ -203,6 +204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render periodically for KPIs that come from the snapshot endpoint
   setInterval(refreshSnapshot, 5000);
   setInterval(refreshKeys, 10000);
+  setInterval(refreshPlanUsage, 10000);
   // Re-render accounts every 3s so the sparkline ticks even when no requests come in
   setInterval(() => {
     if (state.currentPage === 'accounts') renderAccounts();
@@ -221,7 +223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ---------------------------------------------------------------------------
 
 async function refreshAll() {
-  await Promise.all([refreshStrategies(), refreshKeys(), refreshSnapshot()]);
+  await Promise.all([refreshStrategies(), refreshKeys(), refreshSnapshot(), refreshPlanUsage()]);
 }
 
 async function refreshStrategies() {
@@ -241,6 +243,60 @@ async function refreshKeys() {
   $('#nav-keys-count').textContent = String(keys.filter((k) => k.enabled).length);
   renderAccounts();
   if (state.currentPage === 'overview') renderOverview();
+}
+
+// Plan usage (Go limits: $12/5h, $30/week, $60/month) — refreshes alongside keys.
+async function refreshPlanUsage() {
+  try {
+    state.planUsage = await api.planUsage();
+  } catch {
+    return; // keep last known values
+  }
+  renderPlanPool();
+  renderAccounts();
+}
+
+const fmtReset = (resetAt) => {
+  if (!resetAt) return 'no usage';
+  const remaining = resetAt - Date.now();
+  if (remaining <= 0) return 'resets now';
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  return `resets in ${h}h ${m}m`;
+};
+
+function planBarsHtml(windows) {
+  if (!windows) return '';
+  const rows = [
+    ['5h', windows.rolling5h],
+    ['week', windows.weekly],
+    ['month', windows.monthly],
+  ];
+  return rows.map(([label, w]) => {
+    const pct = w && w.limit > 0 ? Math.min(100, (w.cost / w.limit) * 100) : 0;
+    const color = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+    const costText = w ? `$${w.cost.toFixed(2)} / $${w.limit}` : '—';
+    const resetText = w ? fmtReset(w.resetAt) : '—';
+    return `
+      <div class="plan-row">
+        <div class="plan-label"><span>${label}</span><span>${costText} · ${pct.toFixed(0)}% · ${resetText}</span></div>
+        <div class="plan-track"><div class="plan-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+  }).join('');
+}
+
+function renderPlanPool() {
+  const host = $('#plan-pool');
+  if (!host) return;
+  const pool = state.planUsage?.pool;
+  if (!pool) return;
+  const total5h = (state.planUsage.perKey || []).reduce((a, k) => a + (k.rolling5h?.cost || 0), 0);
+  host.innerHTML = `
+    <div class="plan-pool-head">
+      <span>Pool vs Go plan limits</span>
+      <span class="plan-pool-total">$${total5h.toFixed(2)} in last 5h</span>
+    </div>
+    ${planBarsHtml(pool)}`;
 }
 
 async function refreshSnapshot() {
@@ -881,9 +937,18 @@ function renderAccountCard(key) {
           <button class="btn btn-sm btn-danger" data-action="remove" data-id="${key.id}">Remove</button>
         </div>
       </div>
-    </article>
-  `;
-}
+
+      ${(() => {
+        const pu = (state.planUsage?.perKey || []).find((p) => p.id === key.id);
+        if (!pu) return '';
+        return `<div class="plan-usage">
+          <div class="plan-usage-head">Go plan usage</div>
+          ${planBarsHtml(pu)}
+        </div>`;
+      })()}
+      </article>
+      `;
+      }
 
 function initAccountCardHandlers(host) {
   // Toggle

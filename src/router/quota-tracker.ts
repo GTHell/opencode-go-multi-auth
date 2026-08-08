@@ -105,6 +105,27 @@ export class QuotaTracker {
     return this.summarizeUsageLog(usageLog)
   }
 
+  /**
+   * Dollar usage in a rolling window + when that window resets.
+   * resetAt = earliest contributing request's timestamp + windowMs (sliding
+   * window semantics, matching the OpenCode Go console's 5h/weekly/monthly
+   * counters). null when the key has no usage in the window.
+   */
+  getWindowPlan(keyId: string, windowMs: number, now: number = Date.now()) {
+    const entry = this.store.get(keyId)
+    const windowStart = now - windowMs
+    const usageLog = entry?.usageLog.filter((item) => item.timestamp >= windowStart) ?? []
+    const cost = usageLog.reduce(
+      (acc, item) => acc + (typeof item.cost === 'number' && Number.isFinite(item.cost) ? item.cost : 0),
+      0,
+    )
+    const earliestTs = usageLog.length > 0 ? Math.min(...usageLog.map((item) => item.timestamp)) : null
+    return {
+      cost,
+      resetAt: earliestTs !== null ? earliestTs + windowMs : null,
+    }
+  }
+
   applyStateToKey(key: ApiKey): void {
     const u = this.getUsage(key.id)
     key.tokensUsed = u.totalTokens

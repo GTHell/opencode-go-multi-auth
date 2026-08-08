@@ -94,6 +94,42 @@ export class DashboardServer {
       res.json(this.serializeKeys())
     }))
 
+    // Plan-level usage vs OpenCode Go subscription limits ($12/5h, $30/week,
+    // $60/month — documented at opencode.ai/docs/go). Computed locally from
+    // per-request observed cost (rate card), same dollar-based semantics as
+    // the Go console's rolling counters.
+    this.app.get('/api/plan-usage', (_req, res) => {
+      const H = 3600 * 1000
+      const limits = { rolling5h: 12, weekly: 30, monthly: 60 } as const
+      interface PlanWindow { cost: number; limit: number; resetAt: number | null }
+      interface PlanKeyEntry { id: string; alias: string; masked: string; rolling5h: PlanWindow; weekly: PlanWindow; monthly: PlanWindow }
+      const perKey: PlanKeyEntry[] = this.keyManager.getKeys().map((key) => {
+        const mk = (p: { cost: number; resetAt: number | null }, limit: number): PlanWindow => ({
+          cost: p.cost, limit, resetAt: p.resetAt,
+        })
+        return {
+          id: key.id,
+          alias: key.alias,
+          masked: `****${key.key.slice(-4)}`,
+          rolling5h: mk(this.quotaTracker.getWindowPlan(key.id, 5 * H), limits.rolling5h),
+          weekly: mk(this.quotaTracker.getWindowPlan(key.id, 7 * 24 * H), limits.weekly),
+          monthly: mk(this.quotaTracker.getWindowPlan(key.id, 30 * 24 * H), limits.monthly),
+        }
+      })
+      const sum = (w: keyof Omit<PlanKeyEntry, 'id' | 'alias' | 'masked'>) =>
+        perKey.reduce((acc, k) => acc + k[w].cost, 0)
+      const earliestReset = (w: keyof Omit<PlanKeyEntry, 'id' | 'alias' | 'masked'>): number | null => {
+        const resets = perKey.map((k) => k[w].resetAt).filter((v): v is number => v !== null)
+        return resets.length > 0 ? Math.min(...resets) : null
+      }
+      const pool: Record<string, { cost: number; limit: number; resetAt: number | null }> = {
+        rolling5h: { cost: sum('rolling5h'), limit: limits.rolling5h, resetAt: earliestReset('rolling5h') },
+        weekly: { cost: sum('weekly'), limit: limits.weekly, resetAt: earliestReset('weekly') },
+        monthly: { cost: sum('monthly'), limit: limits.monthly, resetAt: earliestReset('monthly') },
+      }
+      res.json({ limits, perKey, pool, ts: Date.now() })
+    })
+
     this.app.post('/api/keys', wrap(async (req, res) => {
       const { key, alias, priority, weight, enabled } = req.body
       if (!key || typeof key !== 'string') {
