@@ -38,6 +38,7 @@ export interface StoredApiKey {
   id: string
   key: string
   alias: string
+  workspaceId?: string
   addedAt: number
   enabled: boolean
   priority: number

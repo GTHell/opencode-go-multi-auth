@@ -121,6 +121,7 @@ export class SecureStore {
       id: typeof value.id === 'string' && value.id ? value.id : crypto.randomUUID(),
       key,
       alias,
+      workspaceId: typeof value.workspaceId === 'string' && value.workspaceId.trim() ? value.workspaceId.trim() : undefined,
       addedAt: typeof value.addedAt === 'number' ? value.addedAt : Date.now(),
       enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
       priority: typeof value.priority === 'number' && Number.isFinite(value.priority) ? value.priority : 1,

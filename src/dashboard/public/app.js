@@ -893,7 +893,7 @@ function renderAccountCard(key) {
   const quotaErrorChip = quotaErrorCount > 0
     ? `<span class="chip chip-red" title="Upstream told us this key was exhausted ${quotaErrorCount} time${quotaErrorCount === 1 ? '' : 's'}. The router will not route to this key until the upstream-supplied retry time.">quota ${quotaErrorCount}</span>`
     : '';
-  const qmsg = (lastQuotaError.message || '').replace(/https?:\/\/\S+/gi, '[link]');
+  const qmsg = ((lastQuotaError && lastQuotaError.message) || '').replace(/https?:\/\/\S+/gi, '[link]');
   const qmsgShort = qmsg.length > 130 ? `${qmsg.slice(0, 130)}…` : qmsg;
   const lastQuotaLine = lastQuotaError
     ? `<div class="account-quota-line">Last quota error: <strong>HTTP ${lastQuotaError.statusCode}</strong> ${escapeHtml(qmsgShort)}${lastQuotaError.resetAt ? ` · retry ${fmtDateTime(new Date(lastQuotaError.resetAt).toISOString())}` : ''}</div>`
