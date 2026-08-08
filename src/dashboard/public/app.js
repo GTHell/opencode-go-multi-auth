@@ -286,9 +286,23 @@ async function refreshPlanUsage() {
   } catch {
     /* no official data (yet) — estimates only */
   }
+  try {
+    // burn-rate projections derived from scrape history (derive_usage.py)
+    const der = await fetch('/usage-derived.json?t=' + Date.now()).then((r) => r.json());
+    if (der && der.keys) state.derivedUsage = der;
+  } catch {
+    /* no derived data yet */
+  }
   renderPlanPool();
   renderAccounts();
 }
+
+const fmtHours = (h) => {
+  if (h == null) return '';
+  if (h >= 24 * 30) return `${(h / 720).toFixed(0)}mo`;
+  if (h >= 24) return `${(h / 24).toFixed(1)}d`;
+  return `${h.toFixed(0)}h`;
+};
 
 const officialFresh = () => {
   const o = state.officialUsage;
@@ -333,11 +347,14 @@ function renderPlanPool() {
   if (!pu) return;
   const keys = pu.perKey || [];
   const official = officialFresh();
-  const cell = (w, offWin) => {
+  const cell = (w, offWin, derWin) => {
     const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
     const pct = Math.min(100, raw);
     const color = raw >= 90 ? 'var(--red)' : raw >= 70 ? 'var(--yellow)' : 'var(--green)';
     const reset = w ? fmtReset(w.resetAt) : '—';
+    const paceLine = derWin && derWin.projected_pct != null
+      ? `<span class="plan-cell-pace">on pace ${derWin.projected_pct}%${derWin.eta_h != null ? ` · ETA ${fmtHours(derWin.eta_h)}` : ''}</span>`
+      : '';
     if (offWin && typeof offWin.pct === 'number') {
       const oPct = Math.min(100, offWin.pct);
       const oColor = offWin.pct >= 90 ? 'var(--red)' : offWin.pct >= 70 ? 'var(--yellow)' : 'var(--green)';
@@ -347,9 +364,10 @@ function renderPlanPool() {
         <span class="plan-cell-reset">${oReset}</span>
         <div class="plan-cell-track"><div class="plan-cell-fill" style="width:${oPct}%;background:${oColor}"></div></div>
         <span class="plan-cell-est">est $${(w?.cost || 0).toFixed(2)}/${w?.limit}</span>
+        ${paceLine}
       </div>`;
     }
-    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div><span class="plan-cell-est">estimate</span></div>`;
+    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div><span class="plan-cell-est">estimate</span>${paceLine}</div>`;
   };
   const wsLink = (k) => {
     const id = k.workspaceId;
@@ -362,12 +380,16 @@ function renderPlanPool() {
   };
   const rows = keys.map((k) => {
     const off = official && k.workspaceId ? official.workspaces[k.workspaceId] : null;
+    const der = state.derivedUsage && k.workspaceId ? state.derivedUsage.keys[k.workspaceId] : null;
     const badge = off ? '<span class="chip chip-green" title="Real numbers from the opencode.ai console">official</span>'
                       : '<span class="chip chip-yellow" title="Rate-card estimate — not the console numbers">est</span>';
+    const paceChip = der && der.pace && der.pace !== 'ok'
+      ? `<span class="chip ${der.pace === 'high' ? 'chip-yellow' : 'chip-red'}" title="Projected to exceed this window's limit at current burn rate">${der.pace.replace('caps-', 'caps ')}</span>`
+      : '';
     return `
     <div class="plan-key-row">
-      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong> ${badge}<div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
-      ${cell(k.rolling5h, off && off.rolling)}${cell(k.weekly, off && off.weekly)}${cell(k.monthly, off && off.monthly)}
+      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong> ${badge}${paceChip}<div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
+      ${cell(k.rolling5h, off && off.rolling, der && der.rolling)}${cell(k.weekly, off && off.weekly, der && der.weekly)}${cell(k.monthly, off && off.monthly, der && der.monthly)}
       <div class="plan-key-ws">${wsLink(k)}</div>
     </div>`;
   }).join('');
