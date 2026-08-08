@@ -1595,6 +1595,11 @@ input, select, textarea {
 .plan-key-row:hover { background: rgba(255,255,255,.03); }
 .plan-key-name { min-width: 0; }
 .plan-cell-reset { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.official-pct { font-size: 15px; font-weight: 700; }
+.plan-cell-est { font-size: 9px; color: var(--text-faint, #5a6178); margin-top: 2px; display: block; }
+.plan-key-name .chip { margin-left: 6px; }
+.chip-green { background: rgba(63,191,143,.15); color: var(--green); }
+.chip-yellow { background: rgba(255,212,94,.12); color: var(--yellow); }
 .plan-cell-track { height: 4px; border-radius: 3px; background: rgba(255,255,255,.07); overflow: hidden; margin-top: 3px; }
 .plan-cell-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
 .plan-ws {

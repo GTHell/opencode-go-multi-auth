@@ -278,9 +278,23 @@ async function refreshPlanUsage() {
   } catch {
     return; // keep last known values
   }
+  try {
+    // REAL usage scraped from the logged-in opencode.ai console (see
+    // go_usage_poll.sh) — served as a static file by express.static.
+    const off = await fetch('/usage-official.json?t=' + Date.now()).then((r) => r.json());
+    if (off && off.workspaces) state.officialUsage = off;
+  } catch {
+    /* no official data (yet) — estimates only */
+  }
   renderPlanPool();
   renderAccounts();
 }
+
+const officialFresh = () => {
+  const o = state.officialUsage;
+  if (!o || !o.ts) return null;
+  return (Date.now() / 1000 - o.ts) < 20 * 60 ? o : null;
+};
 
 const fmtReset = (resetAt) => {
   if (!resetAt) return 'no usage';
@@ -318,12 +332,24 @@ function renderPlanPool() {
   const pu = state.planUsage;
   if (!pu) return;
   const keys = pu.perKey || [];
-  const cell = (w) => {
+  const official = officialFresh();
+  const cell = (w, offWin) => {
     const raw = w && w.limit > 0 ? (w.cost / w.limit) * 100 : 0;
     const pct = Math.min(100, raw);
     const color = raw >= 90 ? 'var(--red)' : raw >= 70 ? 'var(--yellow)' : 'var(--green)';
     const reset = w ? fmtReset(w.resetAt) : '—';
-    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div></div>`;
+    if (offWin && typeof offWin.pct === 'number') {
+      const oPct = Math.min(100, offWin.pct);
+      const oColor = offWin.pct >= 90 ? 'var(--red)' : offWin.pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+      const oReset = offWin.reset ? `resets in ${offWin.reset}` : '';
+      return `<div class="plan-cell">
+        <span class="official-pct" style="color:${oColor}">${offWin.pct}%</span>
+        <span class="plan-cell-reset">${oReset}</span>
+        <div class="plan-cell-track"><div class="plan-cell-fill" style="width:${oPct}%;background:${oColor}"></div></div>
+        <span class="plan-cell-est">est $${(w?.cost || 0).toFixed(2)}/${w?.limit}</span>
+      </div>`;
+    }
+    return `<div class="plan-cell"><span style="color:${color};font-weight:600">$${(w?.cost || 0).toFixed(2)}</span> / $${w?.limit} · ${raw.toFixed(0)}%<div class="plan-cell-track"><div class="plan-cell-fill" style="width:${pct}%;background:${color}"></div></div><div class="plan-cell-reset">${reset}</div><span class="plan-cell-est">estimate</span></div>`;
   };
   const wsLink = (k) => {
     const id = k.workspaceId;
@@ -334,12 +360,17 @@ function renderPlanPool() {
       <button class="btn btn-ghost btn-sm ws-edit" data-action="edit-ws" data-id="${k.id}" data-current="${id || ''}" title="Set workspace ID">✎</button>
     </div>`;
   };
-  const rows = keys.map((k) => `
+  const rows = keys.map((k) => {
+    const off = official && k.workspaceId ? official.workspaces[k.workspaceId] : null;
+    const badge = off ? '<span class="chip chip-green" title="Real numbers from the opencode.ai console">official</span>'
+                      : '<span class="chip chip-yellow" title="Rate-card estimate — not the console numbers">est</span>';
+    return `
     <div class="plan-key-row">
-      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong><div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
-      ${cell(k.rolling5h)}${cell(k.weekly)}${cell(k.monthly)}
+      <div class="plan-key-name"><strong>${escapeHtml(k.alias || k.masked)}</strong> ${badge}<div class="plan-cell-reset">${escapeHtml(k.masked)}</div></div>
+      ${cell(k.rolling5h, off && off.rolling)}${cell(k.weekly, off && off.weekly)}${cell(k.monthly, off && off.monthly)}
       <div class="plan-key-ws">${wsLink(k)}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   const total5h = pu.pool?.rolling5h?.cost || 0;
   host.innerHTML = `
     <div class="plan-pool-head">
