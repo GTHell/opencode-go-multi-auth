@@ -164,6 +164,11 @@ const on = (event, handler) => bus.addEventListener(event, handler);
 // ---------------------------------------------------------------------------
 
 function setPage(page) {
+  // keep the URL in sync so reload / back / forward preserve the page
+  const hash = '#' + page;
+  if (location.hash !== hash) {
+    try { history.replaceState(null, '', hash); } catch { /* file:// etc */ }
+  }
   if (state.currentPage === 'models' && page !== 'models') {
     if (state.zenDriftTimer) {
       clearTimeout(state.zenDriftTimer);
@@ -182,6 +187,13 @@ function setPage(page) {
   if (page === 'settings') renderSettings();
   if (window.innerWidth <= 700) document.body.classList.remove('nav-open');
 }
+
+// restore the page from the URL hash on load + back/forward
+function pageFromHash() {
+  const p = (location.hash || '').replace(/^#/, '');
+  return ['overview', 'routing', 'accounts', 'tokens', 'logs', 'models', 'settings'].includes(p) ? p : 'overview';
+}
+window.addEventListener('hashchange', () => setPage(pageFromHash()));
 
 // Mobile: hamburger opens the sidebar off-canvas.
 const navToggle = document.getElementById('nav-toggle');
@@ -219,6 +231,7 @@ function initRouting() {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', async () => {
+  setPage(pageFromHash());  // honor #hash on load (reload stays on page)
   initRouting();
   initModal();
   initTokensPage();
