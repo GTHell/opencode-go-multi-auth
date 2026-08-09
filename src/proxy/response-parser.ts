@@ -42,7 +42,7 @@ function extractUsageObject(source: Record<string, any> | undefined): ParsedUsag
     ? (source.prompt_cache_hit_tokens ?? 0)
     : (source.cache_read_input_tokens ?? ptd?.cached_tokens ?? 0)
   const input = isDeepseek
-    ? (source.prompt_cache_miss_tokens ?? source.prompt_tokens ?? 0)
+    ? (source.prompt_cache_miss_tokens ?? Math.max((source.prompt_tokens ?? 0) - (source.prompt_cache_hit_tokens ?? 0), 0))
     : (source.input_tokens ?? Math.max((source.prompt_tokens ?? 0) - (ptd?.cached_tokens ?? 0), 0))
   const cacheRead = cachedTokens
   const cacheWrite = isDeepseek ? 0 : (source.cache_creation_input_tokens ?? 0)
