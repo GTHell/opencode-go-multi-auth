@@ -103,18 +103,45 @@ export class DashboardServer {
       const limits = { rolling5h: 12, weekly: 30, monthly: 60 } as const
       interface PlanWindow { cost: number; limit: number; resetAt: number | null }
       interface PlanKeyEntry { id: string; alias: string; masked: string; rolling5h: PlanWindow; weekly: PlanWindow; monthly: PlanWindow }
+
+      // Official console % is the ground truth (the raw quotaTracker only sees
+      // OUR traffic — external usage on a key would vanish from the pool).
+      // usage-official.json is refreshed by usage_scrape.sh next to the public
+      // assets; prefer it per workspace, fall back to observed cost.
+      let officialByWs: Record<string, Record<string, { pct: number; reset_at?: number | null }>> = {}
+      try {
+        const officialPath = path.join(__dirname, '..', 'dashboard', 'public', 'usage-official.json')
+        const raw = fs.readFileSync(officialPath, 'utf8')
+        officialByWs = (JSON.parse(raw).workspaces ?? {}) as typeof officialByWs
+      } catch { /* no official sync yet — fall back to observed */ }
+      const winKey = { rolling5h: 'rolling', weekly: 'weekly', monthly: 'monthly' } as const
+      const officialCost = (wid: string | undefined, win: keyof typeof winKey, limit: number): number | null => {
+        if (!wid) return null
+        const w = officialByWs[wid]
+        if (!w) return null
+        const pct = w[winKey[win]]?.pct
+        if (typeof pct !== 'number') return null
+        return (pct / 100) * limit
+      }
       const perKey: PlanKeyEntry[] = this.keyManager.getKeys().map((key) => {
         const mk = (p: { cost: number; resetAt: number | null }, limit: number): PlanWindow => ({
           cost: p.cost, limit, resetAt: p.resetAt,
         })
+        const wins = {
+          rolling5h: mk(this.quotaTracker.getWindowPlan(key.id, 5 * H), limits.rolling5h),
+          weekly: mk(this.quotaTracker.getWindowPlan(key.id, 7 * 24 * H), limits.weekly),
+          monthly: mk(this.quotaTracker.getWindowPlan(key.id, 30 * 24 * H), limits.monthly),
+        }
+        for (const w of Object.keys(winKey) as (keyof typeof winKey)[]) {
+          const official = officialCost(key.workspaceId, w, limits[w])
+          if (official !== null) wins[w].cost = official
+        }
         return {
           id: key.id,
           alias: key.alias,
           workspaceId: key.workspaceId ?? null,
           masked: `****${key.key.slice(-4)}`,
-          rolling5h: mk(this.quotaTracker.getWindowPlan(key.id, 5 * H), limits.rolling5h),
-          weekly: mk(this.quotaTracker.getWindowPlan(key.id, 7 * 24 * H), limits.weekly),
-          monthly: mk(this.quotaTracker.getWindowPlan(key.id, 30 * 24 * H), limits.monthly),
+          ...wins,
         }
       })
       const sum = (w: keyof Omit<PlanKeyEntry, 'id' | 'alias' | 'masked'>) =>
