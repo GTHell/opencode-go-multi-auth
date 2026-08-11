@@ -1,5 +1,8 @@
 import crypto from 'node:crypto'
+import fs from 'node:fs'
 import http from 'node:http'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { KeyManager } from '../router/key-manager.js'
 import type { CircuitBreaker } from '../router/circuit-breaker.js'
 import type { QuotaTracker } from '../router/quota-tracker.js'
@@ -21,6 +24,8 @@ import { parseUsageData } from './response-parser.js'
 import { estimateCost } from './rate-card.js'
 import { langfuseIngest } from '../observability/langfuse-ingest.js'
 import { SessionAffinityStore } from './session-affinity.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export interface ProxyServerConfig {
   port: number
@@ -572,22 +577,45 @@ export class ProxyServer {
 
   /**
    * How hot is this key right now? Max percentage across the plan windows
-   * (5h/$12, 7d/$30, 30d/$60) using the router's own metered cost — the
-   * same shape as the dashboard's usage cells. Drives usage-aware routing.
+   * (5h/$12, 7d/$30, 30d/$60) — blending the router's metered cost with the
+   * OFFICIAL console % (usage-official.json). The official numbers see
+   * EXTERNAL usage the meter never observes (key1 monthly 94% while metered
+   * showed ~30%) — without them the router happily exhausts a key whose
+   * monthly is nearly gone while cooler keys sit idle.
    */
+  private officialCache: { mtime: number; byWs: Record<string, Record<string, { pct?: number }>> } = { mtime: 0, byWs: {} }
+  private officialPct(wid: string | undefined, winKey: string): number | null {
+    if (!wid) return null
+    const file = path.join(__dirname, '..', 'dashboard', 'public', 'usage-official.json')
+    try {
+      const st = fs.statSync(file)
+      if (st.mtimeMs !== this.officialCache.mtime) {
+        const raw = fs.readFileSync(file, 'utf8')
+        this.officialCache = { mtime: st.mtimeMs, byWs: (JSON.parse(raw).workspaces ?? {}) }
+      }
+      const pct = this.officialCache.byWs[wid]?.[winKey]?.pct
+      return typeof pct === 'number' ? pct : null
+    } catch {
+      return null
+    }
+  }
+
   private keyHotnessPct(keyId: string): number {
     const now = Date.now()
-    const windows: Array<[number, number]> = [
-      [5 * 3600 * 1000, 12],
-      [7 * 24 * 3600 * 1000, 30],
-      [30 * 24 * 3600 * 1000, 60],
+    const windows: Array<[number, number, string]> = [
+      [5 * 3600 * 1000, 12, 'rolling'],
+      [7 * 24 * 3600 * 1000, 30, 'weekly'],
+      [30 * 24 * 3600 * 1000, 60, 'monthly'],
     ]
+    const key = this.keyManager.getKeys().find((k) => k.id === keyId)
     let max = 0
-    for (const [ms, limit] of windows) {
+    for (const [ms, limit, winKey] of windows) {
       const { cost } = this.quotaTracker.getWindowPlan(keyId, ms, now)
       if (limit > 0 && typeof cost === 'number' && Number.isFinite(cost)) {
         max = Math.max(max, (cost / limit) * 100)
       }
+      const official = this.officialPct(key?.workspaceId, winKey)
+      if (official !== null) max = Math.max(max, official)
     }
     return max
   }
